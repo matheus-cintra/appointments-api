@@ -11,5 +11,9 @@ export class UserSearchParams {
 
   @IsOptional()
   @IsString()
+  crn?: string;
+
+  @IsOptional()
+  @IsString()
   active?: string;
 }

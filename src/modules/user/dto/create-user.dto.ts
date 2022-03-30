@@ -1,5 +1,5 @@
 import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { UserTypeEnum } from '../entities/user.entity';
+import { IParameter, UserTypeEnum } from '../entities/user.entity';
 
 export class CreateUserDto {
   @IsNotEmpty({ message: 'Name is required' })
@@ -17,6 +17,21 @@ export class CreateUserDto {
   @IsOptional()
   @IsEnum(UserTypeEnum, { message: 'User type must be a valid user type' })
   userType: UserTypeEnum;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Document is required' })
+  document: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Phone is required' })
+  phone: string;
+
+  @IsOptional()
+  @IsString()
+  crn?: string;
+
+  @IsOptional()
+  parameters?: IParameter;
 
   @IsOptional()
   active: boolean;

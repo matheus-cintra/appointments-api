@@ -13,9 +13,9 @@ export class UserService {
   constructor(private readonly userRepository: UserRepository) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
-    const existUser = await this.userRepository.findOne({ email: createUserDto.email });
+    const existUser = await this.userRepository.findByCondition({ email: createUserDto.email });
 
-    if (existUser) {
+    if (existUser.length) {
       throw new BadRequestException('User already exists');
     }
 
@@ -35,7 +35,7 @@ export class UserService {
   }
 
   async findOne(id: string): Promise<User> {
-    return await this.userRepository.findOne({ id });
+    return await this.userRepository.findById(id);
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User | BadRequestException> {
