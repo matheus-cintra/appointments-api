@@ -1,7 +1,6 @@
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { findAllWithPaginate } from '../../shared/utils/mongoose/common-querys';
-import { FindAllParameters } from '../../shared/utils/types/find-all-parameters';
+import { paginateResponse } from '../../shared/utils/pagination-response/pagination-response';
 import { PaginationResponseType } from '../../shared/utils/types/pagination-response';
 import { PaginationParams } from '../../shared/utils/types/pagination.params';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -16,27 +15,20 @@ export class UserRepository {
     return await new this.userModel(createUserDto).save();
   }
 
-  async findOne(condition: any): Promise<User> {
-    return await this.userModel.findOne(condition);
+  async findByCondition(condition: any): Promise<User[]> {
+    return await this.userModel.find(condition);
   }
 
   async findById(id: string): Promise<User> {
     return await this.userModel.findById(id);
   }
 
-  async findAll({ active = 'true' }: UserSearchParams, params?: PaginationParams): Promise<PaginationResponseType> {
-    const options: FindAllParameters = {
-      where: {
-        active: active === 'true',
-      },
-      paginate: {
-        page: params.page,
-        limit: params.limit,
-      },
-      sort: 'name',
-    };
+  async findAll({ active = 'true' }: UserSearchParams, { page = 1, limit = 10 }: PaginationParams): Promise<PaginationResponseType> {
+    const result = await this.userModel.find({ active: active === 'true' }, { password: 0 }, { skip: (page - 1) * limit, limit: limit });
 
-    return await findAllWithPaginate(this.userModel, options);
+    const count = await this.userModel.countDocuments({ active: active === 'true' });
+
+    return paginateResponse([count, result], page, limit);
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {

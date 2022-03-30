@@ -13,6 +13,8 @@ const mockUserDto: CreateUserDto = {
   password: 'hashed_password',
   active: true,
   userType: UserTypeEnum.USER,
+  document: '99999999',
+  phone: '19999999999',
 };
 
 const mockUserService = {
@@ -88,5 +90,32 @@ describe('UserController', () => {
 
     expect(response).toEqual(users);
     expect(response).toHaveLength(2);
+  });
+
+  it('should find user by id', async () => {
+    const user = { id: 'id1', ...mockUserDto };
+
+    mockUserService.findOne.mockReturnValueOnce(Promise.resolve(user));
+
+    const response = await controller.findOne('id1');
+
+    expect(response).toEqual(user);
+  });
+
+  it('should update user by id', async () => {
+    const user = { id: 'id1', ...mockUserDto };
+
+    mockUserService.update.mockReturnValueOnce(Promise.resolve(user));
+
+    const response = await controller.update('id1', user);
+
+    expect(response).toEqual(user);
+  });
+
+  it('should remove a user', async () => {
+    mockUserService.remove.mockReturnValueOnce(Promise.resolve());
+    const response = await controller.remove('id1');
+
+    expect(response).toBeUndefined();
   });
 });
