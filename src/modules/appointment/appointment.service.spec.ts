@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { SqsService } from '../../shared/sqs/sqs.service';
 import { PaginationResponseType } from '../../shared/utils/types/pagination-response';
 import { PaginationParams } from '../../shared/utils/types/pagination.params';
 import { UserTypeEnum } from '../user/entities/user.entity';
@@ -7,11 +8,13 @@ import { AppointmentRepository } from './appointment.repository';
 import { AppointmentService } from './appointment.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 
+jest.useFakeTimers()
+
 const mockAppointmentRepository = {
   findAll: jest.fn(),
   findOne: jest.fn(),
   findByCondition: jest.fn(),
-  create: jest.fn().mockImplementationOnce(async () => Promise.resolve({ id: 'id', ...mockAppointmentDto })),
+  create: jest.fn(),
   update: jest.fn(),
   remove: jest.fn(),
 };
@@ -32,7 +35,7 @@ const mockUserDto = {
 
 const mockAppointmentDto: CreateAppointmentDto = {
   providerId: '1111111111111',
-  scheduleDate: '2022-04-01 14:00',
+  scheduleDate: '2022-05-01 14:00',
 };
 
 describe('AppointmentService', () => {
@@ -43,6 +46,7 @@ describe('AppointmentService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AppointmentService,
+        SqsService,
         {
           provide: AppointmentRepository,
           useValue: mockAppointmentRepository,
@@ -57,6 +61,11 @@ describe('AppointmentService', () => {
     service = module.get<AppointmentService>(AppointmentService);
   });
 
+  afterEach(async () => {
+    jest.clearAllMocks();
+    jest.resetAllMocks();
+  });
+
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
@@ -64,8 +73,14 @@ describe('AppointmentService', () => {
   it('should success create an appointment', async () => {
     mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve({ id: 'id', ...mockUserDto }));
     mockAppointmentRepository.findByCondition.mockImplementationOnce(() => Promise.resolve([]));
+    mockAppointmentRepository.create.mockImplementationOnce(async () => Promise.resolve({ id: 'id', ...mockAppointmentDto }));
     const appointment = await service.create('1111111111111', mockAppointmentDto);
     expect(appointment).toEqual({ id: 'id', ...mockAppointmentDto });
+  });
+
+  it('should throw if provider not found', async () => {
+    mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve(null));
+    await expect(service.create('1111111111111', mockAppointmentDto)).rejects.toThrowError('Provider not found');
   });
 
   it('should throw if appointment is on past', async () => {
@@ -83,7 +98,7 @@ describe('AppointmentService', () => {
   });
 
   it('should throw if appointment is booked in same date', async () => {
-    const appointmentDate = '2022-04-01 14:00';
+    const appointmentDate = '2022-05-01 14:00';
     mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve({ id: 'id', ...mockUserDto }));
     mockAppointmentRepository.findByCondition.mockImplementationOnce(() => Promise.resolve([{ id: 'id', ...mockAppointmentDto }]));
     await expect(service.create('1111111111111', { ...mockAppointmentDto, scheduleDate: appointmentDate })).rejects.toThrowError('This appointment is already booked');
@@ -173,6 +188,24 @@ describe('AppointmentService', () => {
     await expect(service.findOne('idAppointment', 'idCustomer')).rejects.toThrowError('Appointment with id idAppointment not found');
   });
 
+  it('should throw if appointment not found on update', async () => {
+    mockAppointmentRepository.findOne.mockReturnValueOnce(Promise.resolve(null));
+
+    const updateAppointmentDto = {
+      ...mockAppointmentDto,
+      scheduleDate: '2022-04-01 14:00',
+      customerId: 'idCustomer',
+    };
+
+    await expect(service.update('idAppointment', updateAppointmentDto, 'idCustomer')).rejects.toThrowError('Appointment with id idAppointment not found');
+  });
+
+  it('should throw if provider not found on update', async () => {
+    mockAppointmentRepository.findOne.mockReturnValueOnce(Promise.resolve({ id: 'idAppointment', ...mockAppointmentDto }));
+    mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve(null));
+    await expect(service.update('idAppointment', mockAppointmentDto, 'idCustomer')).rejects.toThrowError('Provider not found');
+  });
+
   it('should update appointment successfully', async () => {
     mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve({ id: 'id', ...mockUserDto }));
     mockAppointmentRepository.findByCondition.mockImplementationOnce(() => Promise.resolve([]));
@@ -180,12 +213,65 @@ describe('AppointmentService', () => {
 
     const updateAppointmentDto = {
       ...mockAppointmentDto,
-      scheduleDate: '2022-04-01 14:00',
-      customerId: 'idCustomer'
+      scheduleDate: '2022-05-01 14:00',
+      customerId: 'idCustomer',
     };
 
     mockAppointmentRepository.update.mockReturnValueOnce(Promise.resolve({ id: 'id1', ...updateAppointmentDto }));
     const response = await service.update('id1', updateAppointmentDto, 'idCustomer');
     expect(response).toEqual({ id: 'id1', ...updateAppointmentDto, customerId: 'idCustomer' });
+  });
+
+  it('should throw if appointment date is in the past on update', async () => {
+    mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve({ id: 'id', ...mockUserDto }));
+    mockAppointmentRepository.findByCondition.mockImplementationOnce(() => Promise.resolve([]));
+    mockAppointmentRepository.findOne.mockImplementationOnce(() => Promise.resolve({ id: 'id1', ...mockAppointmentDto }));
+
+    const updateAppointmentDto = {
+      ...mockAppointmentDto,
+      scheduleDate: '2020-05-01 14:00',
+      customerId: 'idCustomer',
+    };
+
+    await expect(service.update('id1', updateAppointmentDto, 'idCustomer')).rejects.toThrowError('You can not update an appointment on a past date');
+  });
+
+  it('should throw if appointment date is before 8 and after 17', async () => {
+    mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve({ id: 'id', ...mockUserDto }));
+    mockAppointmentRepository.findByCondition.mockImplementationOnce(() => Promise.resolve([]));
+    mockAppointmentRepository.findOne.mockImplementationOnce(() => Promise.resolve({ id: 'id1', ...mockAppointmentDto }));
+
+    const updateAppointmentDto = {
+      ...mockAppointmentDto,
+      scheduleDate: '2022-04-02 07:00',
+      customerId: 'idCustomer',
+    };
+
+    await expect(service.update('id1', updateAppointmentDto, 'idCustomer')).rejects.toThrowError('You can only update appointments between 8am and 5pm');
+  });
+
+  it('should throw if appointment date already booked', async () => {
+    mockAppointmentRepository.findOne.mockImplementationOnce(() => Promise.resolve({ id: 'id1', ...mockAppointmentDto }));
+    mockUserRepository.findById.mockImplementationOnce(() => Promise.resolve({ id: 'id', ...mockUserDto }));
+    mockAppointmentRepository.findByCondition.mockImplementationOnce(() => Promise.resolve([{ id: 'id2', ...mockAppointmentDto }]));
+
+    const updateAppointmentDto = {
+      ...mockAppointmentDto,
+      scheduleDate: '2022-05-01 14:00',
+      customerId: 'idCustomer',
+    };
+
+    await expect(service.update('id1', updateAppointmentDto, 'idCustomer')).rejects.toThrowError('This appointment is already booked');
+  });
+
+  it('should throw if not find appointment in remove', async () => {
+    mockAppointmentRepository.findOne.mockReturnValueOnce(Promise.resolve(null));
+    await expect(service.remove('idAppointment', 'idCustomer')).rejects.toThrowError('Appointment with id idAppointment not found');
+  });
+
+  it('should remove an appointment with a void return', async () => {
+    mockAppointmentRepository.findOne.mockReturnValueOnce(Promise.resolve({ id: 'idAppointment', ...mockAppointmentDto }));
+    const response = await service.remove('idAppointment', 'idCustomer');
+    expect(response).toBeUndefined();
   });
 });

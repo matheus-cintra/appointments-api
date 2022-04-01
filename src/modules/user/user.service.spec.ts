@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { PaginationParams } from 'src/shared/utils/types/pagination.params';
+import { PaginationParams } from '../../shared/utils/types/pagination.params';
 import { UserTypeEnum } from './entities/user.entity';
 import { UserRepository } from './user.repository';
 import { UserService } from './user.service';
