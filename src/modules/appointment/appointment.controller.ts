@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
-import { PaginationResponseType } from 'src/shared/utils/types/pagination-response';
+import { PaginationResponseType } from '../../shared/utils/types/pagination-response';
 import { ValidateObjectId } from '../../shared/validators/ValidateObjectId';
 import { PaginationParams } from '../../shared/utils/types/pagination.params';
 import { AppointmentService } from './appointment.service';

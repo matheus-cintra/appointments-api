@@ -1,16 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PaginationResponseType } from 'src/shared/utils/types/pagination-response';
-import { PaginationParams } from 'src/shared/utils/types/pagination.params';
+import { getHours, isBefore, parseISO, startOfHour } from 'date-fns';
+import { SqsService } from '../../shared/sqs/sqs.service';
+import { PaginationResponseType } from '../../shared/utils/types/pagination-response';
+import { PaginationParams } from '../../shared/utils/types/pagination.params';
+import { UserRepository } from '../user/user.repository';
 import { AppointmentRepository } from './appointment.repository';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { Appointment } from './entities/appointment.entity';
-import { startOfHour, parseISO, isBefore, getHours } from 'date-fns';
-import { UserRepository } from '../user/user.repository';
 
 @Injectable()
 export class AppointmentService {
-  constructor(private readonly appointmentRepository: AppointmentRepository, private readonly userRepository: UserRepository) {}
+  constructor(private readonly appointmentRepository: AppointmentRepository, private readonly userRepository: UserRepository, private readonly sqsService: SqsService) {}
 
   async create(userId: string, createAppointmentDto: CreateAppointmentDto) {
     const appointmentDate = startOfHour(parseISO(createAppointmentDto.scheduleDate));
@@ -38,7 +39,13 @@ export class AppointmentService {
 
     Object.assign(createAppointmentDto, { customerId: userId });
 
-    return await this.appointmentRepository.create(createAppointmentDto);
+    const result = await this.appointmentRepository.create(createAppointmentDto);
+
+    this.sqsService.notificate(result);
+
+    this.sqsService.sendEmail(result);
+
+    return result;
   }
 
   async findAll(pagination: PaginationParams, userId: string): Promise<PaginationResponseType> {
@@ -82,9 +89,7 @@ export class AppointmentService {
       scheduleDate: appointmentDate,
     });
 
-    if (hasAppointmentInSameDate.length) {
-      throw new BadRequestException('This appointment is already booked');
-    }
+    if (hasAppointmentInSameDate.length) throw new BadRequestException('This appointment is already booked');
 
     Object.assign(updateAppointmentDto, { customerId: userId });
     return await this.appointmentRepository.update(id, updateAppointmentDto);
@@ -95,6 +100,6 @@ export class AppointmentService {
 
     if (!appointment) throw new BadRequestException(`Appointment with id ${id} not found`);
 
-    return this.appointmentRepository.remove(id);
+    await this.appointmentRepository.remove(id);
   }
 }
